@@ -29,3 +29,21 @@ model_package = model.register(
 )
 
 print("Model registered in registry!")
+
+
+
+
+
+  from sagemaker import ModelPackage
+
+registered_model = ModelPackage(
+    role=role,
+    model_package_arn=model_package.model_package_arn,
+    sagemaker_session=sagemaker_session
+)
+
+predictor = registered_model.deploy(
+    initial_instance_count=1,
+    instance_type="ml.m5.large",
+    endpoint_name="pickle-model-endpoint"
+)
