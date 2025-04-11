@@ -1,25 +1,58 @@
-response = sm_client.list_inference_components(EndpointName=endpoint_name)
-for comp in response['InferenceComponents']:
-    print(comp['InferenceComponentName'])
+# inference.py
+import joblib
+import os
+import numpy as np
 
----
-from sagemaker.predictor import Predictor
-from sagemaker.serializers import JSONSerializer
-from sagemaker.deserializers import JSONDeserializer
+def model_fn(model_dir):
+    model = joblib.load(os.path.join(model_dir, "model.pkl"))
+    return model
 
-endpoint_name = "ARM-1744363227697-Endpoint-20250411-092031"
-inference_component_name = "YourInferenceComponentName"  # Replace with actual name
+def input_fn(request_body, content_type='application/json'):
+    if content_type == 'application/json':
+        return np.array(request_body['instances'])
+    else:
+        raise ValueError(f"Unsupported content type: {content_type}")
 
-predictor = Predictor(
-    endpoint_name=endpoint_name,
-    serializer=JSONSerializer(),
-    deserializer=JSONDeserializer()
+def predict_fn(input_data, model):
+    return model.predict(input_data).tolist()
+
+def output_fn(prediction, content_type='application/json'):
+    return {"predictions": prediction}
+----
+
+tar -czf model.tar.gz model.pkl inference.py
+
+----
+aws s3 cp model.tar.gz s3://your-bucket-name/model/model.tar.gz
+--
+from sagemaker.sklearn.model import SKLearnModel
+from sagemaker import Session
+
+role = "arn:aws:iam::<your-account>:role/service-role/SageMakerExecutionRole"
+
+model = SKLearnModel(
+    model_data="s3://your-bucket-name/model/model.tar.gz",
+    role=role,
+    entry_point="inference.py",
+    framework_version="0.23-1",  # use version matching your sklearn
+    py_version='py3',
 )
 
-# Provide InferenceComponentName in the request
-response = predictor.predict(
-    {"instances": [[0.5, 1.2, 3.3, 4.0, 2.1, 0.7]]},
-    inference_component_name=inference_component_name
-)
+predictor = model.deploy(instance_type="ml.m5.large", initial_instance_count=1)
+
+--
+response = predictor.predict({
+    "instances": [[0.1, 0.0, 1.0, 0.3, 0.2, 0.0, 1.0, 0.4, 0.2, 0.3, 0.0, 1.0, 0.5, 0.1, 0.3, 0.0]]
+})
 
 print("Prediction:", response)
+--
+import json
+
+# Send a single row of input (16 features if including intercept)
+input_data = {
+    "instances": [buddha_df.iloc[0].tolist()]
+}
+
+response = predictor.predict(input_data)
+print(response)
