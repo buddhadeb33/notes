@@ -8,7 +8,10 @@ def model_fn(model_dir):
     return model
 
 def input_fn(request_body, content_type='application/json'):
-    if content_type == 'application/json':
+    import json
+    if 'json' in content_type:
+        if isinstance(request_body, str):
+            request_body = json.loads(request_body)
         return np.array(request_body['instances'])
     else:
         raise ValueError(f"Unsupported content type: {content_type}")
