@@ -1,1 +1,10 @@
+from sagemaker import image_uris
 
+container_uri = image_uris.retrieve(
+    framework='sklearn',
+    region='us-east-1',
+    version='1.0-1',  # Replace with your desired scikit-learn version
+    instance_type='ml.m5.large'  # Optional but good practice
+)
+
+print(container_uri)
