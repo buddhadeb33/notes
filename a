@@ -8,3 +8,25 @@ container_uri = image_uris.retrieve(
 )
 
 print(container_uri)
+
+
+
+#####
+
+from sagemaker.model import Model
+
+model = Model(
+    image_uri=container_uri,
+    model_data='s3://your-bucket/model-artifacts/model.tar.gz',
+    role='your-sagemaker-execution-role',
+    name='sklearn-model'
+)
+
+model_package = model.register(
+    content_types=['text/csv'],
+    response_types=['text/csv'],
+    inference_instances=['ml.m5.large'],
+    transform_instances=['ml.m5.large'],
+    model_package_group_name='sklearn-model-group',
+    approval_status='Approved'
+)
