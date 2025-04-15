@@ -1,32 +1,20 @@
-from sagemaker import image_uris
+import zipfile
+import os
 
-container_uri = image_uris.retrieve(
-    framework='sklearn',
-    region='us-east-1',
-    version='1.0-1',  # Replace with your desired scikit-learn version
-    instance_type='ml.m5.large'  # Optional but good practice
-)
+# Set the directory containing your zip files
+zip_dir = '/path/to/your/zips'
+extract_dir = '/path/to/extracted/files'
 
-print(container_uri)
+# Make sure the output directory exists
+os.makedirs(extract_dir, exist_ok=True)
 
-
-
-#####
-
-from sagemaker.model import Model
-
-model = Model(
-    image_uri=container_uri,
-    model_data='s3://your-bucket/model-artifacts/model.tar.gz',
-    role='your-sagemaker-execution-role',
-    name='sklearn-model'
-)
-
-model_package = model.register(
-    content_types=['text/csv'],
-    response_types=['text/csv'],
-    inference_instances=['ml.m5.large'],
-    transform_instances=['ml.m5.large'],
-    model_package_group_name='sklearn-model-group',
-    approval_status='Approved'
-)
+# Loop through all zip files in the directory
+for filename in os.listdir(zip_dir):
+    if filename.endswith('.zip'):
+        zip_path = os.path.join(zip_dir, filename)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            # Create a subfolder named after the zip file (optional)
+            subfolder = os.path.join(extract_dir, os.path.splitext(filename)[0])
+            os.makedirs(subfolder, exist_ok=True)
+            zip_ref.extractall(subfolder)
+        print(f"Unzipped: {filename}")
