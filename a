@@ -34,18 +34,19 @@ def find_and_process_models(root_folder):
     found_models = 0
     for dirpath, dirnames, filenames in os.walk(root_folder):
         print(f"Walking through folder: {dirpath}")
-        for filename in filenames:
-            if filename == 'trained_model.pkl':
-                file_path = os.path.join(dirpath, filename)
-                try:
-                    model = load_pickle(file_path)
-                    extract_model_info(model, file_path)
-                    found_models += 1
-                except Exception as e:
-                    print(f"Error loading {file_path}:", e)
+        if 'trained_model.pkl' in filenames:
+            file_path = os.path.join(dirpath, 'trained_model.pkl')
+            try:
+                model = load_pickle(file_path)
+                extract_model_info(model, file_path)
+                found_models += 1
+            except Exception as e:
+                print(f"Error loading {file_path}:", e)
+        else:
+            print("trained_model.pkl not found in this folder.")
 
     print(f"\nTotal 'trained_model.pkl' files found and processed: {found_models}")
 
-# Example usage
-root_folder = 'C:/Users/bmondB3/Buddha_Projects/ccb_model/ain/models/'
+# Your root folder path
+root_folder = 'C:/Users/bmond01/Buddha Projects/ccb model/aim/models/'
 find_and_process_models(root_folder)
