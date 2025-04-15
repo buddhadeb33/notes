@@ -1,29 +1,44 @@
-import boto3
-import json
+import os
 
-# Initialize the SageMaker runtime client
-runtime = boto3.client('sagemaker-runtime')
+# Path where all 'data_output...' folders exist
+root_dir = "path/to/your/root/folder"  # ← Replace with actual root path
 
-# Define your endpoint name (replace with your actual one)
-endpoint_name = 'sagemaker-scikit-learn-2025-04-11-12-26-51-318'
+for folder_name in os.listdir(root_dir):
+    old_folder_path = os.path.join(root_dir, folder_name)
 
-# Input: A single sample (15 features)
-input_data = {
-    "instances": [
-        [0.23, 0.11, 0.45, 0.67, 0.39, 0.78, 0.54, 0.31, 0.23, 0.15, 0.68, 0.12, 0.34, 0.88, 0.76]
-    ]
-}
+    # Only process folders starting with 'data_output'
+    if os.path.isdir(old_folder_path) and folder_name.startswith("data_output"):
+        try:
+            # Traverse into the subfolders to find the prefix under HAS/
+            sub_path = os.path.join(
+                old_folder_path,
+                "model_training",
+                "ALL MODEL 0312",
+                "model_data",
+                "HAS"
+            )
 
-# Convert to JSON
-payload = json.dumps(input_data)
+            # Get the name like 'us_ach' or 'us_zba'
+            subfolders = [
+                f for f in os.listdir(sub_path)
+                if os.path.isdir(os.path.join(sub_path, f))
+            ]
 
-# Invoke the endpoint
-response = runtime.invoke_endpoint(
-    EndpointName=endpoint_name,
-    ContentType='application/json',
-    Body=payload
-)
+            if not subfolders:
+                print(f"❌ No prefix folder found inside HAS/ for: {folder_name}")
+                continue
 
-# Decode the response
-result = json.loads(response['Body'].read())
-print("Prediction:", result)
+            prefix = subfolders[0]  # e.g., 'us_ach'
+            new_folder_name = f"{prefix}_data"
+            new_folder_path = os.path.join(root_dir, new_folder_name)
+
+            # If folder with new name already exists, warn and skip to avoid overwrite
+            if os.path.exists(new_folder_path):
+                print(f"⚠️ Skipping: {new_folder_name} already exists.")
+                continue
+
+            os.rename(old_folder_path, new_folder_path)
+            print(f"✅ Renamed: {folder_name} → {new_folder_name}")
+
+        except Exception as e:
+            print(f"⚠️ Error processing {folder_name}: {e}")
