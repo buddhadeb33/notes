@@ -1,49 +1,51 @@
-# Create model registry group if not exists
-model_package_group_name = "my-pickle-model-group"
+import os
+import pickle
+import pandas as pd
 
-client = boto3.client("sagemaker")
+# Root folder where all model folders reside
+root_dir = "C:/Users/bmond01/Buddha_Projects/ccb_model/aim/models"
 
-try:
-    client.create_model_package_group(
-        ModelPackageGroupName=model_package_group_name,
-        ModelPackageGroupDescription="Model group for pickle-based models"
-    )
-except client.exceptions.ResourceInUse:
-    print("Model group already exists.")
+model_records = []
 
+for dirpath, dirnames, filenames in os.walk(root_dir):
+    if "trained_model.pkl" in filenames:
+        model_path = os.path.join(dirpath, "trained_model.pkl")
 
-model = SKLearnModel(
-    model_data=model_data,
-    role=role,
-    framework_version="1.0-1",  # Match your scikit-learn version
-    sagemaker_session=sagemaker_session
-)
+        try:
+            # Extract model_name from path after "HAS/"
+            parts = model_path.replace("\\", "/").split("/")
+            model_name = parts[parts.index("HAS") + 1]
 
-model_package = model.register(
-    content_types=["application/json"],
-    response_types=["application/json"],
-    model_package_group_name=model_package_group_name,
-    approval_status="Approved",  # You can also set "PendingManualApproval"
-    inference_instances=["ml.m5.large"],
-    transform_instances=["ml.m5.large"]
-)
+            # Load the model object
+            with open(model_path, "rb") as f:
+                model_obj = pickle.load(f)
 
-print("Model registered in registry!")
+            # Try to determine the model_type (LightGBM, XGBoost, etc.)
+            if hasattr(model_obj, "__class__"):
+                model_type = model_obj.__class__.__name__.lower()
+            else:
+                model_type = "unknown"
 
+            # Try extracting features
+            if isinstance(model_obj, dict):
+                feature_input = model_obj.get("feature_input") or model_obj.get("features") or "Not found"
+            elif hasattr(model_obj, "feature_name_"):
+                feature_input = model_obj.feature_name_
+            elif hasattr(model_obj, "feature_input"):
+                feature_input = model_obj.feature_input
+            else:
+                feature_input = "Not found"
 
+            model_records.append({
+                "model_name": model_name,
+                "model_type": model_type,
+                "feature_input": feature_input
+            })
 
+        except Exception as e:
+            print(f"⚠️ Error reading {model_path}: {e}")
 
-
-  from sagemaker import ModelPackage
-
-registered_model = ModelPackage(
-    role=role,
-    model_package_arn=model_package.model_package_arn,
-    sagemaker_session=sagemaker_session
-)
-
-predictor = registered_model.deploy(
-    initial_instance_count=1,
-    instance_type="ml.m5.large",
-    endpoint_name="pickle-model-endpoint"
-)
+# Create dataframe
+df = pd.DataFrame(model_records)
+print(df)
+# df.to_csv("model_summary.csv", index=False)
