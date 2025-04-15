@@ -1,3 +1,45 @@
+Here is the full list of all 39 models in a dataframe format:
+
+Let me know if you'd like this in CSV, Excel, or any other format.
+1.  ca_ach  
+2.  ca_corporate_card  
+3.  ca_corporate_card_auth  
+4.  ca_ebp  
+5.  ca_fraud_protection  
+6.  ca_image_cash_letter  
+7.  ca_int_high_val_wire  
+8.  ca_letters_of_credit  
+9.  ca_moneris  
+10. ca_online_banking  
+11. ca_op_check_acct  
+12. ca_real_time_payments  
+13. ca_remote_deposit_capture  
+14. ca_saving_interest_acct  
+15. ca_treasury_deposits  
+16. ca_virtual_card  
+17. ca_zba  
+18. us_ach  
+19. us_automated_credit_sweep  
+20. us_corporate_card  
+21. us_corporate_card_auth  
+22. us_edi  
+23. us_elavon  
+24. us_fraud_protection  
+25. us_image_cash_letter  
+26. us_int_high_val_wire  
+27. us_letters_of_credit  
+28. us_online_banking  
+29. us_op_check_acct  
+30. us_real_time_payments  
+31. us_remote_deposit_capture  
+32. us_saving_interest_acct  
+33. us_term_rev_loan  
+34. us_tf_equipment_finance  
+35. us_treasury_deposits  
+36. us_virtual_card  
+37. us_zba  
+38. us_rev_loan  
+39. us_data_sweep
 # inference.py
 
 import os
