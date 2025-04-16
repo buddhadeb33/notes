@@ -1,26 +1,23 @@
-import os
-import pickle
-import pandas as pd
-import io
+AIM model output/pickle files are not available in the Git repo.
 
-# Load the model from model_dir/model.pkl
-def model_fn(model_dir):
-    model_path = os.path.join(model_dir, "model.pkl")
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
-    return model
+Downloading ~45 model files manually is tedious; Dataiku doesn’t support bulk downloads, and some files fail to download.
 
-# Convert incoming request to a DataFrame
-def input_fn(request_body, request_content_type):
-    if request_content_type == "application/x-parquet":
-        return pd.read_parquet(io.BytesIO(request_body))
-    else:
-        raise ValueError(f"Unsupported content type: {request_content_type}")
+We're still exploring the inference, post-processing, and prediction pipeline—lack of workflow documentation slows understanding.
 
-# Make prediction
-def predict_fn(input_data, model):
-    return model.predict(input_data)
+All models seem to run together, with no clear separation of inference per model, making AWS implementation complex.
 
-# Format output
-def output_fn(prediction, content_type):
-    return str(prediction.tolist())
+The codebase lacks a clear structure or workflow guide, and we can’t track how models are being triggered or executed.
+
+Execution logs are missing; coordinating with Liya to obtain them.
+
+Extracting feature inputs from pickle files is time-consuming.
+
+Many Python files in the repo lack descriptions, making it harder to understand their purpose.
+
+Insights are unavailable—working with Liya for support, but much of the analysis is being done independently.
+
+
+##
+Possible Challenges to overcome
+Dataiku doesn’t support bulk export, making file transfer time-consuming.
+Reengineering effort to convert dataiku code to AWS needs heavy refactoring.
