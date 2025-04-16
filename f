@@ -1,23 +1,41 @@
-AIM model output/pickle files are not available in the Git repo.
+import boto3
 
-Downloading ~45 model files manually is tedious; Dataiku doesn’t support bulk downloads, and some files fail to download.
+client = boto3.client("sagemaker")
 
-We're still exploring the inference, post-processing, and prediction pipeline—lack of workflow documentation slows understanding.
+client.create_model_package_group(
+    ModelPackageGroupName="MyModelPackageGroup",
+    ModelPackageGroupDescription="Group for my ML models"
+)
+---
+from sagemaker.model import Model
+from sagemaker import Session
+from sagemaker.workflow.model_step import RegisterModel
+from sagemaker.workflow.pipeline_context import PipelineSession
+from sagemaker.workflow.execution_variables import ExecutionVariables
 
-All models seem to run together, with no clear separation of inference per model, making AWS implementation complex.
+# Assuming you're using a pipeline session
+sagemaker_session = PipelineSession()
+role = "arn:aws:iam::<your-account-id>:role/service-role/AmazonSageMaker-ExecutionRole"
 
-The codebase lacks a clear structure or workflow guide, and we can’t track how models are being triggered or executed.
+# Define the model artifact and container
+model = Model(
+    image_uri="123456789012.dkr.ecr.us-west-2.amazonaws.com/my-image:latest",
+    model_data="s3://my-bucket/path/to/model.tar.gz",
+    role=role,
+    sagemaker_session=sagemaker_session
+)
 
-Execution logs are missing; coordinating with Liya to obtain them.
+# Create the RegisterModel step
+register_model_step = RegisterModel(
+    name="MyModelRegistrationStep",
+    model=model,
+    content_types=["application/json"],
+    response_types=["application/json"],
+    inference_instances=["ml.m5.large", "ml.m5.xlarge"],
+    transform_instances=["ml.m5.large"],
+    model_package_group_name="MyModelPackageGroup",
+    approval_status="PendingManualApproval",  # or "Approved"
+    description="My model registration",
+)
 
-Extracting feature inputs from pickle files is time-consuming.
-
-Many Python files in the repo lack descriptions, making it harder to understand their purpose.
-
-Insights are unavailable—working with Liya for support, but much of the analysis is being done independently.
-
-
-##
-Possible Challenges to overcome
-Dataiku doesn’t support bulk export, making file transfer time-consuming.
-Reengineering effort to convert dataiku code to AWS needs heavy refactoring.
+# If inside a pipeline, you’d include this in your steps list
