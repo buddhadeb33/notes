@@ -1,102 +1,55 @@
-import sagemaker
-from sagemaker.processing import ScriptProcessor, ProcessingInput, ProcessingOutput
-from sagemaker.sklearn.processing import SKLearnProcessor
-
-# Define the path to your inference script
-inference_script = 'inference_take.py'
-
-# Assume you have a list of identifiers for your "take" models
-take_model_identifiers = ['take_model_1', 'take_model_2']  # Add all your model identifiers
-
-# Define the S3 location for your models and input data
-models_s3_prefix = 's3://your-bucket/models/take/'  # Replace with your S3 path
-input_data_s3_prefix = 's3://your-bucket/input/take/'  # Replace with your S3 path
-output_s3_prefix = 's3://your-bucket/output/take/'  # Replace with your S3 path
-
-# Define the number of models per "take" unit
-num_take_models = 12  # Adjust this to the actual maximum number of models
-
-# Get the SageMaker execution role
-role = sagemaker.get_execution_role()
-
-# Create an SKLearnProcessor
-processor = SKLearnProcessor(
-    framework_version='1.2-1',  # Choose an appropriate Scikit-learn version
-    instance_type='ml.m5.xlarge',  # Choose an appropriate instance type
-    instance_count=1,
-    role=role,
-    sagemaker_session=sagemaker.Session()
-)
-
-# Iterate through each "take" model and run inference sequentially
-for model_id in take_model_identifiers:
-    input_models = []
-    for i in range(1, num_take_models + 1):
-        input_models.append(
-            ProcessingInput(
-                source=f'{models_s3_prefix}{model_id}/model_{i}.pkl',
-                destination=f'/opt/ml/processing/input/models/model_{i}.pkl'
-            )
-        )
-    input_models.append(
-        ProcessingInput(
-            source=f'{input_data_s3_prefix}{model_id}.csv',  # Assuming input data is named accordingly
-            destination='/opt/ml/processing/input/data'
-        )
-    )
-
-    output_config = [
-        ProcessingOutput(source='/opt/ml/processing/output', destination=f'{output_s3_prefix}{model_id}')
-    ]
-
-    processor.run(
-        inputs=input_models,
-        outputs=output_config,
-        arguments=[f'--model-id', model_id, '--input-path', '/opt/ml/processing/input/data', f'--num-models', str(num_take_models)],
-        wait=True  # Ensure the current job finishes before starting the next
-    )
-
-    print(f"Inference for {model_id} completed.")
-
-print("All 'take' model inferences completed.")
-
----
-import argparse
-import os
 import pickle
+import numpy as np
 import pandas as pd
+from sklearn.datasets import make_classification
+import lightgbm as lgb
+from sklearn.linear_model import LogisticRegression
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model-id', type=str, help='Identifier for the take model')
-    parser.add_argument('--input-path', type=str, help='Path to the input data')
-    parser.add_argument('--num-models', type=int, help='Number of models to load')
-    args = parser.parse_args()
+# Define model paths
+model_paths = ['model1.pkl', 'model2.pkl', 'model3.pkl', 'model4.pkl', 'model5.pkl', 'model6.pkl']
+models = []
 
-    model_id = args.model_id
-    input_path = args.input_path
-    num_models = args.num_models
+# Load models from pickle files
+for path in model_paths:
+    with open(path, 'rb') as f:
+        models.append(pickle.load(f))
 
-    models = []
-    for i in range(1, num_models + 1):
-        model_path = os.path.join('/opt/ml/processing/input/models', f'model_{i}.pkl')
-        with open(model_path, 'rb') as f:
-            model = pickle.load(f)
-            models.append(model)
+# Function to create synthetic classification data with a specific number of features
+def create_synthetic_data(n_samples=100, n_features=10):
+    X, y = make_classification(n_samples=n_samples, n_features=n_features, random_state=42)
+    return X, y
 
-    try:
-        input_df = pd.read_csv(os.path.join(input_path, f'{model_id}.csv'))
-        # Perform inference using the loaded models (adjust based on your model structure)
-        predictions = []
-        for model in models:
-            preds = model.predict(input_df)  # Example prediction
-            predictions.append(preds)
+# Dictionary to store predictions
+predictions = {}
 
-        output_df = pd.DataFrame({'prediction': [p.tolist() for p in zip(*predictions)]}) # Example output
-        output_path = os.path.join('/opt/ml/processing/output', f'{model_id}_predictions.csv')
-        output_df.to_csv(output_path, index=False)
+# Automatically extract the number of features from each model and predict
+for idx, model in enumerate(models):
+    # Extract number of features from the model
+    if isinstance(model, LogisticRegression):
+        n_features = len(model.coef_[0])  # Coefficients represent the number of features
+    elif isinstance(model, lgb.LGBMClassifier):
+        n_features = model.booster_.num_feature()  # LightGBM method to get the number of features
+    else:
+        print(f"Model {idx+1} is not supported. It should be either Logistic Regression or LightGBM.")
+        continue
+    
+    # Generate synthetic data for the current model with the expected number of features
+    X_synthetic, y_synthetic = create_synthetic_data(n_samples=100, n_features=n_features)
+    
+    # Predict using the model
+    if isinstance(model, LogisticRegression):
+        predictions[f'model_{idx+1}_predictions'] = model.predict(X_synthetic)
+    elif isinstance(model, lgb.LGBMClassifier):
+        predictions[f'model_{idx+1}_predictions'] = model.predict(X_synthetic)
+    
+    # Store the true labels for the synthetic data in the DataFrame (we can reuse it)
+    predictions['True_Labels'] = y_synthetic
 
-        print(f"Successfully generated predictions for {model_id} with {num_models} models.")
+# Store predictions in a DataFrame for easy viewing
+predictions_df = pd.DataFrame(predictions)
 
-    except Exception as e:
-        print(f"Error processing {model_id}: {e}")
+# Display the first few predictions
+print(predictions_df.head())
+
+# Optionally, save the synthetic data and predictions to a CSV file
+predictions_df.to_csv('synthetic_data_predictions.csv', index=False)
