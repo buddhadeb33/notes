@@ -1,55 +1,67 @@
+import os
+import boto3
 import pickle
 import numpy as np
 import pandas as pd
 from sklearn.datasets import make_classification
-import lightgbm as lgb
 from sklearn.linear_model import LogisticRegression
+import lightgbm as lgb
 
-# Define model paths
-model_paths = ['model1.pkl', 'model2.pkl', 'model3.pkl', 'model4.pkl', 'model5.pkl', 'model6.pkl']
+# AWS S3 setup
+s3_bucket = "sagemaker-us-east-1-436606633363"
+s3_prefix = "take/models/"
+local_model_dir = "downloaded_models"
+os.makedirs(local_model_dir, exist_ok=True)
+
+s3 = boto3.client("s3")
+
+# List of model files
+model_files = [
+    "trained_model_ca_ach.pkl",
+    "trained_model_ca_corporate_card.pkl",
+    "trained_model_ca_corporate_card_auth.pk1",
+    "trained_model_ca_ebp.pkl",
+    "trained_model_ca_fraud_protection.pk1",
+    "trained_model_ca_image_cash_letter.pkl"
+]
+
 models = []
 
-# Load models from pickle files
-for path in model_paths:
-    with open(path, 'rb') as f:
-        models.append(pickle.load(f))
+# Download models from S3
+for file_name in model_files:
+    s3.download_file(s3_bucket, s3_prefix + file_name, os.path.join(local_model_dir, file_name))
+    with open(os.path.join(local_model_dir, file_name), "rb") as f:
+        try:
+            model = pickle.load(f)
+            models.append((file_name, model))
+        except Exception as e:
+            print(f"Error loading {file_name}: {e}")
 
-# Function to create synthetic classification data with a specific number of features
+# Function to create synthetic classification data
 def create_synthetic_data(n_samples=100, n_features=10):
     X, y = make_classification(n_samples=n_samples, n_features=n_features, random_state=42)
     return X, y
 
-# Dictionary to store predictions
+# Run inference
 predictions = {}
-
-# Automatically extract the number of features from each model and predict
-for idx, model in enumerate(models):
-    # Extract number of features from the model
+for fname, model in models:
     if isinstance(model, LogisticRegression):
-        n_features = len(model.coef_[0])  # Coefficients represent the number of features
+        n_features = model.coef_.shape[1]
     elif isinstance(model, lgb.LGBMClassifier):
-        n_features = model.booster_.num_feature()  # LightGBM method to get the number of features
+        n_features = model.booster_.num_feature()
     else:
-        print(f"Model {idx+1} is not supported. It should be either Logistic Regression or LightGBM.")
+        print(f"Unsupported model type in {fname}")
         continue
-    
-    # Generate synthetic data for the current model with the expected number of features
+
+    # Generate synthetic data
     X_synthetic, y_synthetic = create_synthetic_data(n_samples=100, n_features=n_features)
-    
-    # Predict using the model
-    if isinstance(model, LogisticRegression):
-        predictions[f'model_{idx+1}_predictions'] = model.predict(X_synthetic)
-    elif isinstance(model, lgb.LGBMClassifier):
-        predictions[f'model_{idx+1}_predictions'] = model.predict(X_synthetic)
-    
-    # Store the true labels for the synthetic data in the DataFrame (we can reuse it)
-    predictions['True_Labels'] = y_synthetic
 
-# Store predictions in a DataFrame for easy viewing
-predictions_df = pd.DataFrame(predictions)
+    # Predict
+    y_pred = model.predict(X_synthetic)
 
-# Display the first few predictions
-print(predictions_df.head())
+    # Store predictions
+    predictions[fname] = y_pred
 
-# Optionally, save the synthetic data and predictions to a CSV file
-predictions_df.to_csv('synthetic_data_predictions.csv', index=False)
+# Example: Print predictions from one model
+for model_name, preds in predictions.items():
+    print(f"\nPredictions from {model_name}:\n{preds[:10]}")
