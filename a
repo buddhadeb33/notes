@@ -1,67 +1,27 @@
-import os
-import boto3
-import pickle
-import numpy as np
-import pandas as pd
-from sklearn.datasets import make_classification
-from sklearn.linear_model import LogisticRegression
-import lightgbm as lgb
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# AWS S3 setup
-s3_bucket = "sagemaker-us-east-1-436606633363"
-s3_prefix = "take/models/"
-local_model_dir = "downloaded_models"
-os.makedirs(local_model_dir, exist_ok=True)
+sns.histplot(y_pred, bins=2, kde=False)
+plt.title("Prediction Distribution")
+plt.xlabel("Predicted Class")
+plt.ylabel("Frequency")
+plt.grid(True)
+plt.show()
 
-s3 = boto3.client("s3")
 
-# List of model files
-model_files = [
-    "trained_model_ca_ach.pkl",
-    "trained_model_ca_corporate_card.pkl",
-    "trained_model_ca_corporate_card_auth.pk1",
-    "trained_model_ca_ebp.pkl",
-    "trained_model_ca_fraud_protection.pk1",
-    "trained_model_ca_image_cash_letter.pkl"
-]
+if hasattr(model, "predict_proba"):
+    y_proba = model.predict_proba(X_synthetic)[:, 1]
+    sns.histplot(y_proba, bins=20, kde=True)
+    plt.title("Prediction Probability Distribution")
+    plt.xlabel("Predicted Probability")
+    plt.ylabel("Count")
+    plt.grid(True)
+    plt.show()
 
-models = []
 
-# Download models from S3
-for file_name in model_files:
-    s3.download_file(s3_bucket, s3_prefix + file_name, os.path.join(local_model_dir, file_name))
-    with open(os.path.join(local_model_dir, file_name), "rb") as f:
-        try:
-            model = pickle.load(f)
-            models.append((file_name, model))
-        except Exception as e:
-            print(f"Error loading {file_name}: {e}")
+import shap
 
-# Function to create synthetic classification data
-def create_synthetic_data(n_samples=100, n_features=10):
-    X, y = make_classification(n_samples=n_samples, n_features=n_features, random_state=42)
-    return X, y
-
-# Run inference
-predictions = {}
-for fname, model in models:
-    if isinstance(model, LogisticRegression):
-        n_features = model.coef_.shape[1]
-    elif isinstance(model, lgb.LGBMClassifier):
-        n_features = model.booster_.num_feature()
-    else:
-        print(f"Unsupported model type in {fname}")
-        continue
-
-    # Generate synthetic data
-    X_synthetic, y_synthetic = create_synthetic_data(n_samples=100, n_features=n_features)
-
-    # Predict
-    y_pred = model.predict(X_synthetic)
-
-    # Store predictions
-    predictions[fname] = y_pred
-
-# Example: Print predictions from one model
-for model_name, preds in predictions.items():
-    print(f"\nPredictions from {model_name}:\n{preds[:10]}")
+shap.initjs()
+explainer = shap.Explainer(model.predict, X_synthetic)
+shap_values = explainer(X_synthetic[:100])  # Use subset for speed
+shap.plots.beeswarm(shap_values)
