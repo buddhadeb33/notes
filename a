@@ -1,52 +1,102 @@
+import sagemaker
+from sagemaker.processing import ScriptProcessor, ProcessingInput, ProcessingOutput
+from sagemaker.sklearn.processing import SKLearnProcessor
+
+# Define the path to your inference script
+inference_script = 'inference_take.py'
+
+# Assume you have a list of identifiers for your "take" models
+take_model_identifiers = ['take_model_1', 'take_model_2']  # Add all your model identifiers
+
+# Define the S3 location for your models and input data
+models_s3_prefix = 's3://your-bucket/models/take/'  # Replace with your S3 path
+input_data_s3_prefix = 's3://your-bucket/input/take/'  # Replace with your S3 path
+output_s3_prefix = 's3://your-bucket/output/take/'  # Replace with your S3 path
+
+# Define the number of models per "take" unit
+num_take_models = 12  # Adjust this to the actual maximum number of models
+
+# Get the SageMaker execution role
+role = sagemaker.get_execution_role()
+
+# Create an SKLearnProcessor
+processor = SKLearnProcessor(
+    framework_version='1.2-1',  # Choose an appropriate Scikit-learn version
+    instance_type='ml.m5.xlarge',  # Choose an appropriate instance type
+    instance_count=1,
+    role=role,
+    sagemaker_session=sagemaker.Session()
+)
+
+# Iterate through each "take" model and run inference sequentially
+for model_id in take_model_identifiers:
+    input_models = []
+    for i in range(1, num_take_models + 1):
+        input_models.append(
+            ProcessingInput(
+                source=f'{models_s3_prefix}{model_id}/model_{i}.pkl',
+                destination=f'/opt/ml/processing/input/models/model_{i}.pkl'
+            )
+        )
+    input_models.append(
+        ProcessingInput(
+            source=f'{input_data_s3_prefix}{model_id}.csv',  # Assuming input data is named accordingly
+            destination='/opt/ml/processing/input/data'
+        )
+    )
+
+    output_config = [
+        ProcessingOutput(source='/opt/ml/processing/output', destination=f'{output_s3_prefix}{model_id}')
+    ]
+
+    processor.run(
+        inputs=input_models,
+        outputs=output_config,
+        arguments=[f'--model-id', model_id, '--input-path', '/opt/ml/processing/input/data', f'--num-models', str(num_take_models)],
+        wait=True  # Ensure the current job finishes before starting the next
+    )
+
+    print(f"Inference for {model_id} completed.")
+
+print("All 'take' model inferences completed.")
+
+---
+import argparse
 import os
 import pickle
+import pandas as pd
 
-def load_pickle(file_path):
-    with open(file_path, 'rb') as f:
-        return pickle.load(f)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model-id', type=str, help='Identifier for the take model')
+    parser.add_argument('--input-path', type=str, help='Path to the input data')
+    parser.add_argument('--num-models', type=int, help='Number of models to load')
+    args = parser.parse_args()
 
-def extract_model_info(model, file_path):
+    model_id = args.model_id
+    input_path = args.input_path
+    num_models = args.num_models
+
+    models = []
+    for i in range(1, num_models + 1):
+        model_path = os.path.join('/opt/ml/processing/input/models', f'model_{i}.pkl')
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+            models.append(model)
+
     try:
-        print("\n" + "=" * 80)
-        print(f"Model Path: {file_path}")
-        print("Type:", type(model))
-        
-        if hasattr(model, 'get_params'):
-            print("Parameters:", model.get_params())
+        input_df = pd.read_csv(os.path.join(input_path, f'{model_id}.csv'))
+        # Perform inference using the loaded models (adjust based on your model structure)
+        predictions = []
+        for model in models:
+            preds = model.predict(input_df)  # Example prediction
+            predictions.append(preds)
 
-        if hasattr(model, 'feature_names_in_'):
-            print("Feature names:", model.feature_names_in_)
+        output_df = pd.DataFrame({'prediction': [p.tolist() for p in zip(*predictions)]}) # Example output
+        output_path = os.path.join('/opt/ml/processing/output', f'{model_id}_predictions.csv')
+        output_df.to_csv(output_path, index=False)
 
-        if hasattr(model, 'coef_'):
-            print("Coefficients:", model.coef_)
-
-        if hasattr(model, 'feature_importances_'):
-            print("Feature importances:", model.feature_importances_)
-
-        methods = [fn for fn in dir(model) if not fn.startswith("_")]
-        print("Available methods:", methods)
-        print("=" * 80)
+        print(f"Successfully generated predictions for {model_id} with {num_models} models.")
 
     except Exception as e:
-        print(f"Error extracting model info from {file_path}:", e)
-
-def find_and_process_models(root_folder):
-    found_models = 0
-    for dirpath, dirnames, filenames in os.walk(root_folder):
-        print(f"Walking through folder: {dirpath}")
-        if 'trained_model.pkl' in filenames:
-            file_path = os.path.join(dirpath, 'trained_model.pkl')
-            try:
-                model = load_pickle(file_path)
-                extract_model_info(model, file_path)
-                found_models += 1
-            except Exception as e:
-                print(f"Error loading {file_path}:", e)
-        else:
-            print("trained_model.pkl not found in this folder.")
-
-    print(f"\nTotal 'trained_model.pkl' files found and processed: {found_models}")
-
-# Your root folder path
-root_folder = 'C:/Users/bmond01/Buddha Projects/ccb model/aim/models/'
-find_and_process_models(root_folder)
+        print(f"Error processing {model_id}: {e}")
