@@ -110,3 +110,46 @@ image_uri = image_uris.retrieve(
 )
 
 print("Container Image URI:", image_uri)
+
+--
+import boto3
+
+# Initialize SageMaker client for us-east-1
+sagemaker = boto3.client("sagemaker", region_name="us-east-1")
+
+# Define model registration parameters
+model_group = "TAKE"
+model_data_url = "s3://your-bucket/path/to/your-model.tar.gz"  # <-- update this
+container_image = "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.0-1-cpu-py3"
+
+# First, create the model package group (if not already created)
+response_group = sagemaker.create_model_package_group(
+    ModelPackageGroupName=model_group,
+    ModelPackageGroupDescription="Model group for TAKE models",
+    Tags=[
+        {"Key": "region", "Value": "US"},
+        {"Key": "model_type", "Value": "HAS"}
+    ]
+)
+print("Model Package Group created. ARN:", response_group["ModelPackageGroupArn"])
+
+# Now, register a model under this group
+response = sagemaker.create_model_package(
+    ModelPackageGroupName=model_group,
+    ModelPackageDescription="TAKE group - US sklearn model",
+    InferenceSpecification={
+        "Containers": [
+            {
+                "Image": container_image,
+                "ModelDataUrl": model_data_url
+            }
+        ],
+        "SupportedContentTypes": ["text/csv"],
+        "SupportedResponseMIMETypes": ["text/csv"]
+    },
+    ModelApprovalStatus="Approved",  # or 'PendingManualApproval'
+)
+
+print("Model registered successfully.")
+print("Model Package ARN:", response["ModelPackageArn"])
+
