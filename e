@@ -96,4 +96,17 @@ response = sagemaker.create_model_package(
     ]
 )
 print("Model registered. ARN:", response["ModelPackageArn"])
+--
+from sagemaker import image_uris
 
+# Example for PyTorch
+image_uri = image_uris.retrieve(
+    framework='pytorch',
+    region='us-west-2',
+    version='1.12.1',
+    py_version='py38',
+    instance_type='ml.m5.large',  # affects CPU vs GPU
+    image_scope='inference'       # for deployment, use 'training' for training jobs
+)
+
+print("Container Image URI:", image_uri)
