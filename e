@@ -63,3 +63,37 @@ response = sagemaker.create_model_package(
 )
 
 print("Model Package ARN:", response["ModelPackageArn"])
+
+
+--
+
+
+import boto3
+
+sagemaker = boto3.client("sagemaker")
+
+response = sagemaker.create_model_package(
+    ModelPackageGroupName='TAKE',
+    ModelPackageDescription='TAKE group - US model',
+    InferenceSpecification={
+        "Containers": [
+            {
+                "Image": "763104351884.dkr.ecr.us-west-2.amazonaws.com/pytorch-inference:1.12.1-cpu-py38-ubuntu20.04",
+                "ModelDataUrl": "s3://your-bucket/take/us/model-v1/model.tar.gz",
+                "Environment": {
+                    "SAGEMAKER_PROGRAM": "inference.py",
+                    "SAGEMAKER_SUBMIT_DIRECTORY": "s3://your-bucket/take/us/code.tar.gz"
+                }
+            }
+        ],
+        "SupportedContentTypes": ["application/json"],
+        "SupportedResponseMIMETypes": ["application/json"]
+    },
+    ModelApprovalStatus='Approved',
+    Tags=[
+        {'Key': 'region', 'Value': 'US'},
+        {'Key': 'model_type', 'Value': 'HAS'}
+    ]
+)
+print("Model registered. ARN:", response["ModelPackageArn"])
+
