@@ -1,135 +1,218 @@
-Creating a model in **SageMaker Studio (or Studio Lab)** using a `.pkl` file from an **S3 bucket** involves a few clear steps. Here's a detailed **plan of action**, assuming the `.pkl` file contains a **pretrained model object** (e.g., a `sklearn`, `xgboost`, or `PyTorch` model), and your goal is to **deploy** it or **use it for inference** inside SageMaker:
+# %% [markdown]
+# SageMaker Inference Pipeline Notebook
+
+This notebook demonstrates how to:
+
+1. Register two logistic regression models in the SageMaker Model Registry
+2. Build an inference pipeline from registry model packages
+3. Generate synthetic test data
+4. Deploy and invoke the pipeline endpoint
+5. Track and inspect SageMaker models and packages
 
 ---
 
-### ✅ **Plan of Action: Model Creation in SageMaker Studio using `.pkl` file from S3**
+# %% [markdown]
+## Step 1: Create the inference script (`inference.py`)
 
----
+We implement four required functions:
 
-### 🧾 1. **Prerequisites**
-- SageMaker Studio or Studio Lab environment is set up
-- IAM Role attached to SageMaker has permissions for S3 and SageMaker
-- The `.pkl` model file is already uploaded to a known S3 path
-- Dependencies installed (e.g., `scikit-learn`, `boto3`, `joblib`/`pickle`, etc.)
+- `model_fn`: load the pickle
+- `input_fn`: parse CSV input
+- `predict_fn`: run `predict_proba`
+- `output_fn`: serialize to JSON
 
----
-
-### 🪄 2. **Download Model from S3**
-Use `boto3` to download the `.pkl` file from your S3 bucket.
-
-```python
-import boto3
-
-s3 = boto3.client('s3')
-bucket_name = 'your-bucket-name'
-key = 'models/your_model.pkl'
-local_path = 'your_model.pkl'
-
-s3.download_file(bucket_name, key, local_path)
-```
-
----
-
-### 🧠 3. **Load the Model**
-Depending on how it was saved (`pickle`, `joblib`, etc.):
-
-```python
-import joblib
-
-model = joblib.load('your_model.pkl')
-```
-or:
-```python
+# %%
+%%bash
+cat << 'EOF' > inference.py
+import os
 import pickle
+import json
+import pandas as pd
+import io
 
-with open('your_model.pkl', 'rb') as f:
-    model = pickle.load(f)
-```
-
----
-
-### 🚀 4. **Use for Local Inference (Optional)**
-Test a prediction locally:
-```python
-sample_input = [[feature1, feature2, ...]]
-prediction = model.predict(sample_input)
-print(prediction)
-```
-
----
-
-### 🏗️ 5. **Deploy to SageMaker Endpoint**
-If you want to deploy it as an endpoint:
-
-#### Step 1: Create a custom inference script (`inference.py`)
-```python
 def model_fn(model_dir):
-    import joblib
-    model = joblib.load(f"{model_dir}/your_model.pkl")
-    return model
+    """Load model from local directory"""
+    with open(os.path.join(model_dir, 'model.pkl'), 'rb') as f:
+        return pickle.load(f)
 
-def input_fn(request_body, request_content_type):
-    import json
-    return json.loads(request_body)
+ def input_fn(request_body, request_content_type):
+     """Parse CSV payload"""
+     if request_content_type == 'text/csv':
+         return pd.read_csv(io.StringIO(request_body), header=None)
+     raise ValueError(f"Unsupported content type: {request_content_type}")
 
-def predict_fn(input_data, model):
-    return model.predict([input_data])
+ def predict_fn(input_data, model):
+     """Return class probabilities"""
+     return model.predict_proba(input_data)
 
-def output_fn(prediction, content_type):
-    return str(prediction[0])
-```
+ def output_fn(predictions, content_type):
+     """Convert to JSON"""
+     if content_type == 'application/json':
+         return json.dumps(predictions.tolist()), content_type
+     raise ValueError(f"Unsupported content type: {content_type}")
+EOF
 
-#### Step 2: Create a model tarball and upload to S3
-```bash
-mkdir model
-mv your_model.pkl model/
-tar -czf model.tar.gz model/
-aws s3 cp model.tar.gz s3://your-bucket/model/
-```
+---
 
-#### Step 3: Define a `Model` and deploy
+# %% [markdown]
+## Step 2: Setup AWS Clients and Registry Group
 
-```python
-from sagemaker.sklearn.model import SKLearnModel
-from sagemaker import get_execution_role, Session
+Initialize Boto3 & SageMaker sessions, and create (or reuse) a Model Package Group.
 
-role = get_execution_role()
-sagemaker_session = Session()
+# %%
+import boto3
+import sagemaker
 
-sklearn_model = SKLearnModel(
-    model_data='s3://your-bucket/model/model.tar.gz',
+session = sagemaker.Session()
+role = sagemaker.get_execution_role()
+sm = boto3.client('sagemaker')
+
+model_package_group_name = 'logistic-reg-model-group'
+try:
+    sm.create_model_package_group(
+        ModelPackageGroupName=model_package_group_name,
+        ModelPackageGroupDescription='Logistic regression models'
+    )
+except sm.exceptions.ResourceInUse:
+    pass
+print(f"Using Model Package Group: {model_package_group_name}")
+
+---
+
+# %% [markdown]
+## Step 3: Generate Synthetic Data
+
+Use `sklearn.datasets.make_classification` to create features + labels, then write CSV without headers.
+
+# %%
+from sklearn.datasets import make_classification
+import pandas as pd
+
+X, y = make_classification(
+    n_samples=200, n_features=10,
+    n_informative=5, n_redundant=2,
+    random_state=42
+)
+df = pd.DataFrame(X)
+df['target'] = y
+input_csv = 'synthetic_data.csv'
+df.drop('target', axis=1).to_csv(input_csv, index=False, header=False)
+print(f"Saved synthetic data to: {input_csv}")
+
+---
+
+# %% [markdown]
+## Step 4: Package, Upload & Register Models
+
+- Tar each `model{i}.pkl`
+- Upload to S3
+- Call `create_model_package` in the registry
+
+# %%
+import os, tarfile
+
+bucket = session.default_bucket()
+prefix = 'sagemaker/inference-pipeline'
+model_files = ['model1.pkl', 'model2.pkl']
+model_package_arns = []
+
+for idx, mf in enumerate(model_files, start=1):
+    artifact = f'model{idx}.tar.gz'
+    with tarfile.open(artifact, 'w:gz') as tar:
+        tar.add(mf, arcname='model.pkl')
+
+    s3_uri = session.upload_data(
+        path=artifact,
+        bucket=bucket,
+        key_prefix=f'{prefix}/model{idx}'
+    )
+
+    resp = sm.create_model_package(
+        ModelPackageGroupName=model_package_group_name,
+        ModelPackageDescription=f'Logistic regression #{idx}',
+        InferenceSpecification={
+            'Containers': [{
+                'Image': sagemaker.image_uris.retrieve('sklearn', session.boto_region_name, version='0.23-1'),
+                'ModelDataUrl': s3_uri
+            }],
+            'SupportedContentTypes': ['text/csv'],
+            'SupportedResponseMIMETypes': ['application/json']
+        },
+        ModelApprovalStatus='Approved'
+    )
+    arn = resp['ModelPackageArn']
+    model_package_arns.append(arn)
+    print(f"Registered in registry: {arn}")
+
+---
+
+# %% [markdown]
+## Step 5: Inspect Registered Model Packages
+
+List ARNs, creation times, and statuses for tracking.
+
+# %%
+import pandas as pd
+packages = [sm.describe_model_package(ModelPackageName=arn) for arn in model_package_arns]
+tracking = [{
+    'Arn': pkg['ModelPackageArn'],
+    'Created': pkg['CreationTime'],
+    'Status': pkg['ModelPackageStatus']
+} for pkg in packages]
+print(pd.DataFrame(tracking))
+
+---
+
+# %% [markdown]
+## Step 6: Build & Deploy Inference Pipeline
+
+Use `PipelineModel` with `ModelPackage` objects to deploy an endpoint.
+
+# %%
+from sagemaker.model import ModelPackage
+from sagemaker.pipeline import PipelineModel
+from sagemaker.serializers import CSVSerializer
+from sagemaker.deserializers import JSONDeserializer
+
+model_pkgs = [ModelPackage(role, arn) for arn in model_package_arns]
+pipeline = PipelineModel(
+    name='logreg-inference-pipeline',
     role=role,
-    entry_point='inference.py',
-    framework_version='0.23-1',
-    sagemaker_session=sagemaker_session
+    models=model_pkgs,
+    sagemaker_session=session
 )
 
-predictor = sklearn_model.deploy(instance_type='ml.t2.medium', initial_instance_count=1)
-```
+endpoint_name = 'logreg-registry-pipeline-endpoint'
+predictor = pipeline.deploy(
+    initial_instance_count=1,
+    instance_type='ml.m5.large',
+    endpoint_name=endpoint_name
+)
+predictor.serializer = CSVSerializer(separator=',')
+predictor.deserializer = JSONDeserializer()
+print(f"Deployed endpoint: {endpoint_name}")
 
 ---
 
-### 🧪 6. **Inference from Endpoint**
+# %% [markdown]
+## Step 7: Invoke Endpoint & View Results
+
+Read CSV payload, call `.predict()`, and convert to DataFrame of probabilities.
+
+# %%
+with open(input_csv, 'r') as f:
+    payload = f.read()
+preds = predictor.predict(payload)
+cols = [f'model{n}_class{i}' for n in range(1,3) for i in (0,1)]
+print(pd.DataFrame(preds, columns=cols).head())
+
+---
+
+# %% [markdown]
+## (Optional) Step 8: Cleanup Resources
+
+Remove endpoint and registry group if desired:
 ```python
-response = predictor.predict([your_input])
-print(response)
+# predictor.delete_endpoint()
+# sm.delete_model_package_group(ModelPackageGroupName=model_package_group_name)
 ```
-
----
-
-### 🧹 7. **Cleanup**
-Delete the endpoint after use:
-
-```python
-predictor.delete_endpoint()
-```
-
----
-
-### 🧭 Notes:
-- If you're using **PyTorch**, **TensorFlow**, or **XGBoost**, the flow is similar but you’ll use `PyTorchModel`, `TensorFlowModel`, or `XGBoostModel`.
-- If using **SageMaker Studio Lab** (free tier), endpoint deployment isn't supported directly. You can still use the model locally or shift to **SageMaker Studio (in AWS)** for full deployment capabilities.
-
----
-
-Would you like a full working code template for a specific framework (e.g., `sklearn`, `pytorch`)?
