@@ -2,35 +2,27 @@ import pandas as pd
 import json
 import os
 
-def read_intermediate_output(dag_id: str, task_id: str, run_id: str, suffix: str = "parquet", as_pandas: bool = True):
+def read_intermediate_output(dag_id, name, suffix="parquet", as_pandas=True):
     """
-    Reads intermediate output files (Parquet or JSON) for a given DAG and task.
+    Generic function to read intermediate output files from notebooks.
 
-    Parameters:
-        dag_id (str): The DAG identifier.
-        task_id (str): The task ID within the DAG.
-        run_id (str): The unique identifier for a specific run.
-        suffix (str): File format, e.g., 'parquet', 'json'.
-        as_pandas (bool): Whether to return the data as a pandas DataFrame (only applicable to parquet or JSON records).
+    Args:
+        dag_id (str): Parent directory or DAG name where the data is stored.
+        name (str): Name of the intermediate file (without extension).
+        suffix (str): File format - 'parquet' or 'json'.
+        as_pandas (bool): Whether to return as a pandas DataFrame (for parquet).
 
     Returns:
-        pd.DataFrame or dict or list: Loaded data depending on the file format and `as_pandas`.
+        pd.DataFrame or dict: Data read from file.
     """
-    base_path = f"/path/to/intermediate/outputs/{dag_id}/{task_id}/{run_id}.{suffix}"
+    file_path = f"./notebooks/{dag_id}/{name}.{suffix}"
 
     if suffix == "parquet":
-        if as_pandas:
-            return pd.read_parquet(base_path)
-        else:
-            raise ValueError("Parquet files can only be returned as pandas DataFrames.")
-    
+        return pd.read_parquet(file_path) if as_pandas else file_path
+
     elif suffix == "json":
-        with open(base_path, 'r') as f:
-            data = json.load(f)
-            if as_pandas:
-                return pd.DataFrame(data) if isinstance(data, list) else pd.json_normalize(data)
-            return data
+        with open(file_path, "r") as f:
+            return json.load(f)
 
     else:
-        raise ValueError(f"Unsupported suffix: {suffix}")
-
+        raise ValueError(f"Unsupported file suffix: {suffix}")
