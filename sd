@@ -1,33 +1,36 @@
-Task
-List all ML models to be migrated
-Identify model-specific components
-Create centralized S3 bucket structure
-Provision SageMaker Studio or Notebook Instance
-Set up IAM roles with necessary permissions
-Extract dependency list from Dataiku
-Map modular Dataiku scripts to logical blocks
-Collect all custom scripts and transformation logic
-Identify and copy all pickle files/models to S3
-Create dedicated folders in SageMaker for each model
-Create SageMaker notebook for Model 1
-Refactor data loading to notebook
-Refactor feature engineering to notebook
-Refactor training and evaluation to notebooks
-Create model group in SageMaker Model Registry
-Save model as .pkl and upload to S3
-Register model using SageMaker SDK
-Store model metadata (accuracy, F1, etc.)
-Document workflow using markdown in notebooks
-Refactor inference code to notebook
-Load model from Registry or S3
-Handle input/output in inference pipeline
-Simulate endpoint for batch inference
-Test predictions on synthetic inputs
-Create project-level README or notebook index
-Add orchestration notebook for full pipeline
-Setup tagging/versioning in S3
-Repeat process for 2nd model if applicable
-Run full pipeline end-to-end
-Document known issues and migration decisions
-Prepare handoff document
-List registry paths and model specs
+import pandas as pd
+import json
+import os
+
+def read_intermediate_output(dag_id: str, task_id: str, run_id: str, suffix: str = "parquet", as_pandas: bool = True):
+    """
+    Reads intermediate output files (Parquet or JSON) for a given DAG and task.
+
+    Parameters:
+        dag_id (str): The DAG identifier.
+        task_id (str): The task ID within the DAG.
+        run_id (str): The unique identifier for a specific run.
+        suffix (str): File format, e.g., 'parquet', 'json'.
+        as_pandas (bool): Whether to return the data as a pandas DataFrame (only applicable to parquet or JSON records).
+
+    Returns:
+        pd.DataFrame or dict or list: Loaded data depending on the file format and `as_pandas`.
+    """
+    base_path = f"/path/to/intermediate/outputs/{dag_id}/{task_id}/{run_id}.{suffix}"
+
+    if suffix == "parquet":
+        if as_pandas:
+            return pd.read_parquet(base_path)
+        else:
+            raise ValueError("Parquet files can only be returned as pandas DataFrames.")
+    
+    elif suffix == "json":
+        with open(base_path, 'r') as f:
+            data = json.load(f)
+            if as_pandas:
+                return pd.DataFrame(data) if isinstance(data, list) else pd.json_normalize(data)
+            return data
+
+    else:
+        raise ValueError(f"Unsupported suffix: {suffix}")
+
