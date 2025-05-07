@@ -1,28 +1,23 @@
-import pickle
-import os
+Here's a function that automatically detects and converts all categorical (object or category) columns into numerical format using LabelEncoder:
 
-def load_model_object(region, model_type, base_dir="../notebooks/models/aim_ca_has/ca_ach_data/model_training/ALL MODEL 0312/model_data"):
+from sklearn.preprocessing import LabelEncoder
+
+def encode_categorical_columns(df):
     """
-    Loads a pickled model object based on region and model_type.
-
-    Parameters:
-    - region (str): Region name (e.g., "HAS")
-    - model_type (str): Model type name (e.g., "ca_ach")
-    - base_dir (str): Base directory for model storage
-
-    Returns:
-    - Loaded model object
+    Convert all object or category type columns in the DataFrame to numeric using Label Encoding.
     """
-    model_path = os.path.join(
-        base_dir,
-        region,
-        model_type,
-        "fold_has_model",
-        "trained_model.pkl"
-    )
-
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model file not found at: {model_path}")
+    label_encoders = {}
     
-    with open(model_path, "rb") as f:
-        return pickle.load(f)
+    for col in df.select_dtypes(include=['object', 'category']).columns:
+        le = LabelEncoder()
+        df[col] = df[col].astype(str).fillna("missing")  # Handle NaNs and ensure string type
+        df[col] = le.fit_transform(df[col])
+        label_encoders[col] = le  # Store encoders if inverse transform is needed later
+    
+    return df, label_encoders
+
+Usage:
+
+df_encoded, encoders = encode_categorical_columns(df)
+
+Let me know if you want to handle datetime columns as well in this function.
