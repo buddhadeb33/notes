@@ -1,8 +1,7 @@
 import os
 import re
-import joblib
 
-def load_all_models_with_metadata(base_dir="notebooks/models"):
+def load_all_models_using_pipeline_reader(base_dir="notebooks/models"):
     models = []
 
     print(f"Scanning base directory: {base_dir}")
@@ -12,7 +11,7 @@ def load_all_models_with_metadata(base_dir="notebooks/models"):
             model_path = os.path.join(root, "trained model.pkl")
             print(f"\nFound model file: {model_path}")
 
-            # Extract region and model_type from aim_ca_has or ain_us_has
+            # Extract region and model_type
             match_model_info = re.search(r"(aim|ain)_([a-z]{2})_([a-z]+)", root)
             if not match_model_info:
                 print("Could not extract region/model_type from path.")
@@ -21,7 +20,7 @@ def load_all_models_with_metadata(base_dir="notebooks/models"):
             _, region, model_type = match_model_info.groups()
             print(f"Extracted region: {region}, model_type: {model_type}")
 
-            # Extract product name after /HAS/ folder
+            # Extract product
             match_product = re.search(r'/HAS/([^/]+)/', root.replace("\\", "/"))
             if not match_product:
                 print("Could not extract product name from path.")
@@ -30,27 +29,22 @@ def load_all_models_with_metadata(base_dir="notebooks/models"):
             product = match_product.group(1)
             print(f"Extracted product: {product}")
 
-            # Load model
+            # Build path to pass into read_intermediate_output
+            dag_id = root.split("/notebooks/")[-1].split("/")[0]
+            name = "/".join(root.split("/notebooks/")[-1].split("/")[1:]) + "/trained model.pkl"
+
             try:
-                model = joblib.load(model_path)
-                print(f"Model loaded successfully from: {model_path}")
+                model = read_intermediate_output(dag_id=dag_id, name=name, suffix="pkl", as_pandas=False)
+                print(f"Model loaded successfully via read_intermediate_output: {name}")
                 models.append({
                     "region": region,
                     "model_type": model_type,
                     "product": product,
-                    "model_path": model_path,
+                    "model_path": name,
                     "model": model
                 })
             except Exception as e:
-                print(f"Failed to load model from {model_path}: {e}")
+                print(f"Failed to load model from {name}: {e}")
 
     print(f"\nTotal models loaded: {len(models)}")
     return models
-models_with_meta = load_all_models_with_metadata("/absolute/path/to/notebooks/models")
-
-for m in models_with_meta:
-    print(f"\nModel Summary:")
-    print(f"  Region     : {m['region']}")
-    print(f"  Model Type : {m['model_type']}")
-    print(f"  Product    : {m['product']}")
-    print(f"  Model Path : {m['model_path']}")
