@@ -1,28 +1,76 @@
-import pandas as pd
-import json
 import os
+import re
+import pandas as pd
 
-def read_intermediate_output(dag_id, name, suffix="parquet", as_pandas=True):
+output_preds = []
+
+# Top-level directory where aim_*_has/ain_*_has folders exist
+top_level_dir = "notebooks/models"
+
+def extract_metadata(path):
     """
-    Generic function to read intermediate output files from notebooks.
-
-    Args:
-        dag_id (str): Parent directory or DAG name where the data is stored.
-        name (str): Name of the intermediate file (without extension).
-        suffix (str): File format - 'parquet' or 'json'.
-        as_pandas (bool): Whether to return as a pandas DataFrame (for parquet).
-
-    Returns:
-        pd.DataFrame or dict: Data read from file.
+    Extracts region, model_type (from aim_*_has), and product (from HAS/product)
     """
-    file_path = f"./notebooks/{dag_id}/{name}.{suffix}"
+    # Extract aim_ca_has or ain_us_has from path
+    match_model = re.search(r'(aim|ain)_([a-z]{2})_([a-z]+)', path)
+    # Extract product folder just after HAS
+    match_product = re.search(r'/HAS/([^/]+)/', path.replace("\\", "/"))
 
-    if suffix == "parquet":
-        return pd.read_parquet(file_path) if as_pandas else file_path
+    if match_model and match_product:
+        region = match_model.group(2)
+        model_type = match_model.group(3)
+        product = match_product.group(1)
+        return region, model_type, product
+    return None, None, None
 
-    elif suffix == "json":
-        with open(file_path, "r") as f:
-            return json.load(f)
+def get_model_inputs(model_path, region, model_type, product):
+    """
+    Replace with your actual preprocessing logic
+    """
+    processed_X_data = ...       # Your processed input features
+    eligible_data_df = ...       # DataFrame with 'id_uen'
+    model_config = {
+        "target_prods": ["product_1", "product_2"]  # Can also be loaded from file if needed
+    }
+    return processed_X_data, eligible_data_df, model_config
 
-    else:
-        raise ValueError(f"Unsupported file suffix: {suffix}")
+for root, dirs, files in os.walk(top_level_dir):
+    if "trained model.pkl" in files:
+        model_path = os.path.join(root, "trained model.pkl")
+
+        # Extract region, model_type, and product
+        region, model_type, product = extract_metadata(root)
+        if not region or not model_type or not product:
+            print(f"Skipping due to missing metadata: {root}")
+            continue
+
+        # Load model
+        model_object = read_intermediate_output(
+            dag_id="None",
+            ds_name="None",
+            run_id="None",
+            suffix="pkl",
+            folder_override="analysis output",
+            path_override=model_path
+        )
+
+        # Get inputs
+        processed_X_data, eligible_data_df, model_config = get_model_inputs(model_path, region, model_type, product)
+
+        # Predict
+        preds = model_object.predict_proba(processed_X_data)[:, 1]
+
+        # Build prediction DataFrame
+        pred_df = pd.DataFrame({
+            "uen": eligible_data_df["id_uen"],
+            "product": product,
+            "country": region,
+            "model_type": model_type,
+            "propensity": preds,
+            "orig_products": "|".join(model_config["target_prods"])
+        })
+
+        output_preds.append(pred_df)
+
+# Final combined predictions
+final_predictions = pd.concat(output_preds, ignore_index=True)
