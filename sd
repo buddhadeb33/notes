@@ -1,76 +1,56 @@
 import os
 import re
-import pandas as pd
+import joblib
 
-output_preds = []
+def load_all_models_with_metadata(base_dir="notebooks/models"):
+    models = []
 
-# Top-level directory where aim_*_has/ain_*_has folders exist
-top_level_dir = "notebooks/models"
+    print(f"Scanning base directory: {base_dir}")
 
-def extract_metadata(path):
-    """
-    Extracts region, model_type (from aim_*_has), and product (from HAS/product)
-    """
-    # Extract aim_ca_has or ain_us_has from path
-    match_model = re.search(r'(aim|ain)_([a-z]{2})_([a-z]+)', path)
-    # Extract product folder just after HAS
-    match_product = re.search(r'/HAS/([^/]+)/', path.replace("\\", "/"))
+    for root, dirs, files in os.walk(base_dir):
+        if "trained model.pkl" in files:
+            model_path = os.path.join(root, "trained model.pkl")
+            print(f"\nFound model file: {model_path}")
 
-    if match_model and match_product:
-        region = match_model.group(2)
-        model_type = match_model.group(3)
-        product = match_product.group(1)
-        return region, model_type, product
-    return None, None, None
+            # Extract region and model_type from aim_ca_has or ain_us_has
+            match_model_info = re.search(r"(aim|ain)_([a-z]{2})_([a-z]+)", root)
+            if not match_model_info:
+                print("Could not extract region/model_type from path.")
+                continue
 
-def get_model_inputs(model_path, region, model_type, product):
-    """
-    Replace with your actual preprocessing logic
-    """
-    processed_X_data = ...       # Your processed input features
-    eligible_data_df = ...       # DataFrame with 'id_uen'
-    model_config = {
-        "target_prods": ["product_1", "product_2"]  # Can also be loaded from file if needed
-    }
-    return processed_X_data, eligible_data_df, model_config
+            _, region, model_type = match_model_info.groups()
+            print(f"Extracted region: {region}, model_type: {model_type}")
 
-for root, dirs, files in os.walk(top_level_dir):
-    if "trained model.pkl" in files:
-        model_path = os.path.join(root, "trained model.pkl")
+            # Extract product name after /HAS/ folder
+            match_product = re.search(r'/HAS/([^/]+)/', root.replace("\\", "/"))
+            if not match_product:
+                print("Could not extract product name from path.")
+                continue
 
-        # Extract region, model_type, and product
-        region, model_type, product = extract_metadata(root)
-        if not region or not model_type or not product:
-            print(f"Skipping due to missing metadata: {root}")
-            continue
+            product = match_product.group(1)
+            print(f"Extracted product: {product}")
 
-        # Load model
-        model_object = read_intermediate_output(
-            dag_id="None",
-            ds_name="None",
-            run_id="None",
-            suffix="pkl",
-            folder_override="analysis output",
-            path_override=model_path
-        )
+            # Load model
+            try:
+                model = joblib.load(model_path)
+                print(f"Model loaded successfully from: {model_path}")
+                models.append({
+                    "region": region,
+                    "model_type": model_type,
+                    "product": product,
+                    "model_path": model_path,
+                    "model": model
+                })
+            except Exception as e:
+                print(f"Failed to load model from {model_path}: {e}")
 
-        # Get inputs
-        processed_X_data, eligible_data_df, model_config = get_model_inputs(model_path, region, model_type, product)
+    print(f"\nTotal models loaded: {len(models)}")
+    return models
+models_with_meta = load_all_models_with_metadata("/absolute/path/to/notebooks/models")
 
-        # Predict
-        preds = model_object.predict_proba(processed_X_data)[:, 1]
-
-        # Build prediction DataFrame
-        pred_df = pd.DataFrame({
-            "uen": eligible_data_df["id_uen"],
-            "product": product,
-            "country": region,
-            "model_type": model_type,
-            "propensity": preds,
-            "orig_products": "|".join(model_config["target_prods"])
-        })
-
-        output_preds.append(pred_df)
-
-# Final combined predictions
-final_predictions = pd.concat(output_preds, ignore_index=True)
+for m in models_with_meta:
+    print(f"\nModel Summary:")
+    print(f"  Region     : {m['region']}")
+    print(f"  Model Type : {m['model_type']}")
+    print(f"  Product    : {m['product']}")
+    print(f"  Model Path : {m['model_path']}")
