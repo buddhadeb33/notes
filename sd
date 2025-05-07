@@ -1,86 +1,19 @@
-import os
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
-import lightgbm as lgb
-import shap
 
-def X_data_new(n_samples, n_features):
-    X = np.random.rand(n_samples, n_features)
-    y = np.random.randint(0, 2, size=n_samples)
-    return X, y
 
-models_base_path = "../notebooks/models/HAS"
-output_preds = []
+* Reconstructed the intermediate function to match Dataiku inference flow.
+* Successfully read inference scope files for both CA and US regions.
+* Loaded and validated population data for model input preparation.
+* Read and structured model paths based on region and model type.
+* Handled reading of both LightGBM and Linear Regression models; resolved format issues.
+* Implemented logic to load all models in batch, replicating Dataiku’s model management.
+* Executed batch predictions for all models and concatenated the results into a unified inference output.
+* Initiated model preprocessing logic; began handling categorical variables (some challenges remain).
+* Began extending evaluation metrics (AUC, loss) to support validation consistency—though not critical for inference, adds transparency.
+* Identified issues:
 
-# Loop through all models
-for root, _, files in os.walk(models_base_path):
-    for file in files:
-        if file == "trained_model.pkl":
-            model_path = os.path.join(root, file)
-            try:
-                product = root.split("model_data/HAS/")[-1].split("/")[0]
-                country = product.split("_")[0].upper()
+  * Missing transformation modules used in Dataiku pipeline.
+  * Challenges in variable feeding into the preprocessing pipeline.
 
-                model_object = pd.read_pickle(model_path)
+---
 
-                # Determine n_features
-                if isinstance(model_object, LogisticRegression):
-                    n_features = model_object.coef_.shape[1]
-                elif isinstance(model_object, lgb.LGBMClassifier):
-                    n_features = model_object.booster_.num_feature()
-                else:
-                    print(f"Skipping unsupported model at {model_path}")
-                    continue
-
-                # Generate synthetic input and labels
-                X_data, y_data = X_data_new(n_samples=100, n_features=n_features)
-                preds = model_object.predict_proba(X_data)[:, 1]
-                y_pred_labels = (preds >= 0.5).astype(int)
-
-                # Compute metrics
-                acc = accuracy_score(y_data, y_pred_labels)
-                auc = roc_auc_score(y_data, preds)
-                loss = log_loss(y_data, preds)
-
-                # Compute SHAP values
-                try:
-                    if isinstance(model_object, lgb.LGBMClassifier):
-                        explainer = shap.TreeExplainer(model_object)
-                    elif isinstance(model_object, LogisticRegression):
-                        explainer = shap.Explainer(model_object, X_data)
-                    else:
-                        explainer = None
-                    
-                    shap_values = explainer.shap_values(X_data)[1] if isinstance(shap_values, list) else explainer(X_data).values
-                    shap_mean = np.mean(np.abs(shap_values), axis=1)  # average SHAP value per row
-                except Exception as e:
-                    shap_mean = [np.nan] * len(X_data)
-                    print(f"SHAP failed for {model_path}: {e}")
-
-                # Build result DataFrame
-                pred_df = pd.DataFrame({
-                    "uen": np.random.randint(100000, 999999, size=100),
-                    "product": product,
-                    "country": country,
-                    "model_type": "HAS",
-                    "propensity": preds,
-                    "orig_products": product,
-                    "accuracy": acc,
-                    "auc": auc,
-                    "log_loss": loss,
-                    "shap_mean": shap_mean
-                })
-
-                output_preds.append(pred_df)
-                print(f"✓ {product} processed with metrics and SHAP.")
-
-            except Exception as e:
-                print(f"✗ Failed on {model_path}: {e}")
-
-# Final combined DataFrame
-final_output_df = pd.concat(output_preds, ignore_index=True)
-
-# Optional: Save it
-# final_output_df.to_csv("all_model_predictions_with_metrics.csv", index=False)
+Would you like help drafting an email or slide with this update?
