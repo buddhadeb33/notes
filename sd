@@ -1,23 +1,20 @@
-Here's a function that automatically detects and converts all categorical (object or category) columns into numerical format using LabelEncoder:
-
 from sklearn.preprocessing import LabelEncoder
 
-def encode_categorical_columns(df):
+def preprocess_for_lightgbm(df):
     """
-    Convert all object or category type columns in the DataFrame to numeric using Label Encoding.
+    Converts all object and category columns to numeric using Label Encoding,
+    and converts datetime columns to timestamp integers.
     """
     label_encoders = {}
-    
-    for col in df.select_dtypes(include=['object', 'category']).columns:
-        le = LabelEncoder()
-        df[col] = df[col].astype(str).fillna("missing")  # Handle NaNs and ensure string type
-        df[col] = le.fit_transform(df[col])
-        label_encoders[col] = le  # Store encoders if inverse transform is needed later
-    
+
+    for col in df.columns:
+        if df[col].dtype == 'object' or str(df[col].dtype) == 'category':
+            le = LabelEncoder()
+            df[col] = df[col].astype(str).fillna("missing")
+            df[col] = le.fit_transform(df[col])
+            label_encoders[col] = le
+
+        elif np.issubdtype(df[col].dtype, np.datetime64):
+            df[col] = df[col].view('int64')  # Convert datetime to Unix timestamp
+
     return df, label_encoders
-
-Usage:
-
-df_encoded, encoders = encode_categorical_columns(df)
-
-Let me know if you want to handle datetime columns as well in this function.
