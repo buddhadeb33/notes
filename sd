@@ -1,19 +1,1 @@
 
-
-* Reconstructed the intermediate function to match Dataiku inference flow.
-* Successfully read inference scope files for both CA and US regions.
-* Loaded and validated population data for model input preparation.
-* Read and structured model paths based on region and model type.
-* Handled reading of both LightGBM and Linear Regression models; resolved format issues.
-* Implemented logic to load all models in batch, replicating Dataiku’s model management.
-* Executed batch predictions for all models and concatenated the results into a unified inference output.
-* Initiated model preprocessing logic; began handling categorical variables (some challenges remain).
-* Began extending evaluation metrics (AUC, loss) to support validation consistency—though not critical for inference, adds transparency.
-* Identified issues:
-
-  * Missing transformation modules used in Dataiku pipeline.
-  * Challenges in variable feeding into the preprocessing pipeline.
-
----
-
-Would you like help drafting an email or slide with this update?
