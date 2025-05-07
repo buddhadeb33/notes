@@ -7,20 +7,21 @@ def load_all_models_using_pipeline_reader(base_dir="notebooks/models"):
     print(f"Scanning base directory: {base_dir}")
 
     for root, dirs, files in os.walk(base_dir):
-        if "trained model.pkl" in files:
-            model_path = os.path.join(root, "trained model.pkl")
+        if "trained_model.pkl" in files:
+            model_file = "trained_model.pkl"
+            model_path = os.path.join(root, model_file)
             print(f"\nFound model file: {model_path}")
 
             # Extract region and model_type
-            match_model_info = re.search(r"(aim|ain)_([a-z]{2})_([a-z]+)", root)
+            match_model_info = re.search(r"aim_([a-z]{2})_([a-z]+)", root)
             if not match_model_info:
                 print("Could not extract region/model_type from path.")
                 continue
 
-            _, region, model_type = match_model_info.groups()
+            region, model_type = match_model_info.groups()
             print(f"Extracted region: {region}, model_type: {model_type}")
 
-            # Extract product
+            # Extract product (folder under /HAS/)
             match_product = re.search(r'/HAS/([^/]+)/', root.replace("\\", "/"))
             if not match_product:
                 print("Could not extract product name from path.")
@@ -29,22 +30,30 @@ def load_all_models_using_pipeline_reader(base_dir="notebooks/models"):
             product = match_product.group(1)
             print(f"Extracted product: {product}")
 
-            # Build path to pass into read_intermediate_output
-            dag_id = root.split("/notebooks/")[-1].split("/")[0]
-            name = "/".join(root.split("/notebooks/")[-1].split("/")[1:]) + "/trained model.pkl"
+            # Build dag_id and name for read_intermediate_output
+            rel_path = os.path.relpath(model_path, "../notebooks")
+            dag_id = rel_path.split("/")[0]
+            name = "/".join(rel_path.split("/")[1:])
 
             try:
-                model = read_intermediate_output(dag_id=dag_id, name=name, suffix="pkl", as_pandas=False)
-                print(f"Model loaded successfully via read_intermediate_output: {name}")
+                model = read_intermediate_output(
+                    dag_id=dag_id,
+                    name=name,
+                    suffix="pkl",
+                    as_pandas=False
+                )
+                print(f"Model loaded using read_intermediate_output: {name}")
+
                 models.append({
                     "region": region,
                     "model_type": model_type,
                     "product": product,
-                    "model_path": name,
+                    "model_path": model_path,
                     "model": model
                 })
+
             except Exception as e:
-                print(f"Failed to load model from {name}: {e}")
+                print(f"Failed to load model: {e}")
 
     print(f"\nTotal models loaded: {len(models)}")
     return models
