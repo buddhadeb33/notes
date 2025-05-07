@@ -1,59 +1,28 @@
+import pickle
 import os
-import re
 
-def load_all_models_using_pipeline_reader(base_dir="notebooks/models"):
-    models = []
+def load_model_object(region, model_type, base_dir="../notebooks/models/aim_ca_has/ca_ach_data/model_training/ALL MODEL 0312/model_data"):
+    """
+    Loads a pickled model object based on region and model_type.
 
-    print(f"Scanning base directory: {base_dir}")
+    Parameters:
+    - region (str): Region name (e.g., "HAS")
+    - model_type (str): Model type name (e.g., "ca_ach")
+    - base_dir (str): Base directory for model storage
 
-    for root, dirs, files in os.walk(base_dir):
-        if "trained_model.pkl" in files:
-            model_file = "trained_model.pkl"
-            model_path = os.path.join(root, model_file)
-            print(f"\nFound model file: {model_path}")
+    Returns:
+    - Loaded model object
+    """
+    model_path = os.path.join(
+        base_dir,
+        region,
+        model_type,
+        "fold_has_model",
+        "trained_model.pkl"
+    )
 
-            # Extract region and model_type
-            match_model_info = re.search(r"aim_([a-z]{2})_([a-z]+)", root)
-            if not match_model_info:
-                print("Could not extract region/model_type from path.")
-                continue
-
-            region, model_type = match_model_info.groups()
-            print(f"Extracted region: {region}, model_type: {model_type}")
-
-            # Extract product (folder under /HAS/)
-            match_product = re.search(r'/HAS/([^/]+)/', root.replace("\\", "/"))
-            if not match_product:
-                print("Could not extract product name from path.")
-                continue
-
-            product = match_product.group(1)
-            print(f"Extracted product: {product}")
-
-            # Build dag_id and name for read_intermediate_output
-            rel_path = os.path.relpath(model_path, "../notebooks")
-            dag_id = rel_path.split("/")[0]
-            name = "/".join(rel_path.split("/")[1:])
-
-            try:
-                model = read_intermediate_output(
-                    dag_id=dag_id,
-                    name=name,
-                    suffix="pkl",
-                    as_pandas=False
-                )
-                print(f"Model loaded using read_intermediate_output: {name}")
-
-                models.append({
-                    "region": region,
-                    "model_type": model_type,
-                    "product": product,
-                    "model_path": model_path,
-                    "model": model
-                })
-
-            except Exception as e:
-                print(f"Failed to load model: {e}")
-
-    print(f"\nTotal models loaded: {len(models)}")
-    return models
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found at: {model_path}")
+    
+    with open(model_path, "rb") as f:
+        return pickle.load(f)
