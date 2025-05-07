@@ -1,21 +1,10 @@
-Great — thanks for the clarification.
-
-Here’s the **updated clean version** based on your requirements:
-
-* All model types are `"HAS"`.
-* `orig_products` is the same as `product`.
-* No need to track actual model class like LogisticRegression or LGBM.
-
----
-
-### ✅ Final Code:
-
-```python
 import os
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 import lightgbm as lgb
+import shap
 
 def X_data_new(n_samples, n_features):
     X = np.random.rand(n_samples, n_features)
@@ -25,59 +14,73 @@ def X_data_new(n_samples, n_features):
 models_base_path = "../notebooks/models/HAS"
 output_preds = []
 
-# Walk through all subfolders
+# Loop through all models
 for root, _, files in os.walk(models_base_path):
     for file in files:
         if file == "trained_model.pkl":
             model_path = os.path.join(root, file)
             try:
-                # Extract product from path (e.g., ca_ach)
                 product = root.split("model_data/HAS/")[-1].split("/")[0]
                 country = product.split("_")[0].upper()
 
-                # Load model
                 model_object = pd.read_pickle(model_path)
 
-                # Get feature count
+                # Determine n_features
                 if isinstance(model_object, LogisticRegression):
                     n_features = model_object.coef_.shape[1]
                 elif isinstance(model_object, lgb.LGBMClassifier):
                     n_features = model_object.booster_.num_feature()
                 else:
-                    print(f"Unknown model type at {model_path}")
+                    print(f"Skipping unsupported model at {model_path}")
                     continue
 
-                # Generate synthetic data and predict
+                # Generate synthetic input and labels
                 X_data, y_data = X_data_new(n_samples=100, n_features=n_features)
                 preds = model_object.predict_proba(X_data)[:, 1]
+                y_pred_labels = (preds >= 0.5).astype(int)
 
-                # Create result DataFrame
+                # Compute metrics
+                acc = accuracy_score(y_data, y_pred_labels)
+                auc = roc_auc_score(y_data, preds)
+                loss = log_loss(y_data, preds)
+
+                # Compute SHAP values
+                try:
+                    if isinstance(model_object, lgb.LGBMClassifier):
+                        explainer = shap.TreeExplainer(model_object)
+                    elif isinstance(model_object, LogisticRegression):
+                        explainer = shap.Explainer(model_object, X_data)
+                    else:
+                        explainer = None
+                    
+                    shap_values = explainer.shap_values(X_data)[1] if isinstance(shap_values, list) else explainer(X_data).values
+                    shap_mean = np.mean(np.abs(shap_values), axis=1)  # average SHAP value per row
+                except Exception as e:
+                    shap_mean = [np.nan] * len(X_data)
+                    print(f"SHAP failed for {model_path}: {e}")
+
+                # Build result DataFrame
                 pred_df = pd.DataFrame({
                     "uen": np.random.randint(100000, 999999, size=100),
                     "product": product,
                     "country": country,
                     "model_type": "HAS",
                     "propensity": preds,
-                    "orig_products": product
+                    "orig_products": product,
+                    "accuracy": acc,
+                    "auc": auc,
+                    "log_loss": loss,
+                    "shap_mean": shap_mean
                 })
 
                 output_preds.append(pred_df)
-                print(f"✓ Processed: {product} model from {model_path}")
+                print(f"✓ {product} processed with metrics and SHAP.")
 
             except Exception as e:
-                print(f"✗ Failed to process {model_path}: {e}")
+                print(f"✗ Failed on {model_path}: {e}")
 
-# Concatenate all predictions
+# Final combined DataFrame
 final_output_df = pd.concat(output_preds, ignore_index=True)
 
-# Optional: Save to CSV
-# final_output_df.to_csv("all_model_predictions.csv", index=False)
-```
-
----
-
-Let me know if you want to:
-
-* Add timestamp or version tagging
-* Include SHAP values or additional metrics
-* Push this to S3 from within your notebook
+# Optional: Save it
+# final_output_df.to_csv("all_model_predictions_with_metrics.csv", index=False)
