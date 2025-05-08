@@ -1,7 +1,3 @@
-To make your code read model .pkl files from both the HAS and TAKE folders, you need to update the models_base_path and possibly generalize the logic to handle both paths.
-
-Here's a corrected and complete version of your script that handles both folders:
-
 import os
 import pandas as pd
 import numpy as np
@@ -10,19 +6,27 @@ from sklearn.linear_model import LogisticRegression
 
 output_preds = []
 
-# Define both base paths
+# Initialize counters
+model_count = 0
+error_count = 0
+processed_model_paths = []
+
 models_base_paths = [
     "/notebooks/model data/HAS",
     "/notebooks/model data/TAKE"
 ]
 
 for base_path in models_base_paths:
+    print(f"\nScanning directory: {base_path}")
+
     for root, dirs, files in os.walk(base_path):
         for file in files:
-            if file == "trained_model.pkl" or file.endswith(".pkl"):
+            if file.endswith(".pkl"):
                 model_path = os.path.join(root, file)
+                print(f"Found model file: {model_path}")
+
                 try:
-                    # Extract product info
+                    # Extract product info based on path
                     if "HAS" in base_path:
                         product = root.split("model data/HAS/")[-1].split("/")[0]
                         model_type = "HAS"
@@ -62,22 +66,19 @@ for base_path in models_base_paths:
                     })
 
                     output_preds.append(pred_df)
-                    print(f"Processed: {product} model from {model_path}")
+                    model_count += 1  # Count success
+                    processed_model_paths.append(model_path)
+
+                    print(f"Processed model from: {model_path}")
 
                 except Exception as e:
+                    error_count += 1  # Count failure
                     print(f"Error processing {model_path}: {e}")
 
-This updated code:
+# Final stats
+print(f"\nTotal models successfully processed: {model_count}")
+print(f"Total models failed: {error_count}")
 
-Loops through both HAS and TAKE folders.
-
-Properly extracts the product and model_type fields.
-
-Handles both trained_model.pkl and any .pkl files.
-
-Gracefully continues on error and logs it.
-
-
-Would you like to save all predictions to a single CSV file too?
-
-
+print("\nModels processed:")
+for path in processed_model_paths:
+    print(path)
