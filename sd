@@ -1,1 +1,83 @@
+To make your code read model .pkl files from both the HAS and TAKE folders, you need to update the models_base_path and possibly generalize the logic to handle both paths.
+
+Here's a corrected and complete version of your script that handles both folders:
+
+import os
+import pandas as pd
+import numpy as np
+import lightgbm as lgb
+from sklearn.linear_model import LogisticRegression
+
+output_preds = []
+
+# Define both base paths
+models_base_paths = [
+    "/notebooks/model data/HAS",
+    "/notebooks/model data/TAKE"
+]
+
+for base_path in models_base_paths:
+    for root, dirs, files in os.walk(base_path):
+        for file in files:
+            if file == "trained_model.pkl" or file.endswith(".pkl"):
+                model_path = os.path.join(root, file)
+                try:
+                    # Extract product info
+                    if "HAS" in base_path:
+                        product = root.split("model data/HAS/")[-1].split("/")[0]
+                        model_type = "HAS"
+                    elif "TAKE" in base_path:
+                        product = root.split("model data/TAKE/")[-1].split("/")[0]
+                        model_type = "TAKE"
+                    else:
+                        product = "UNKNOWN"
+                        model_type = "UNKNOWN"
+
+                    country = product.split("_")[0].upper()
+
+                    # Load model
+                    model_object = pd.read_pickle(model_path)
+
+                    # Get feature count
+                    if isinstance(model_object, LogisticRegression):
+                        n_features = model_object.coef_.shape[1]
+                    elif isinstance(model_object, lgb.LGBMClassifier):
+                        n_features = model_object.booster_.num_feature()
+                    else:
+                        print(f"Unknown model type at {model_path}")
+                        continue
+
+                    # Generate dummy data for prediction
+                    X_data = np.random.rand(100, n_features)
+                    preds = model_object.predict_proba(X_data)[:, 1]
+
+                    # Create result DataFrame
+                    pred_df = pd.DataFrame({
+                        "uen": np.random.randint(100000, 999999, size=100),
+                        "product": product,
+                        "country": country,
+                        "model_type": model_type,
+                        "propensity": preds,
+                        "orig_product": product
+                    })
+
+                    output_preds.append(pred_df)
+                    print(f"Processed: {product} model from {model_path}")
+
+                except Exception as e:
+                    print(f"Error processing {model_path}: {e}")
+
+This updated code:
+
+Loops through both HAS and TAKE folders.
+
+Properly extracts the product and model_type fields.
+
+Handles both trained_model.pkl and any .pkl files.
+
+Gracefully continues on error and logs it.
+
+
+Would you like to save all predictions to a single CSV file too?
+
 
